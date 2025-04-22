@@ -7,12 +7,15 @@
 #include <pybind11/functional.h>
 #include <torch/python.h>
 
+#include "c10/cuda/CUDAStream.h"
 #include "deep_ep.hpp"
 #include "kernels/api.cuh"
 #include "kernels/configs.cuh"
 
 namespace deep_ep {
-
+namespace intranode {
+extern void nop(cudaStream_t);
+}
 Buffer::Buffer(int rank, int num_ranks, int64_t num_nvl_bytes, int64_t num_rdma_bytes, bool low_latency_mode):
         rank(rank), num_ranks(num_ranks),
         num_nvl_bytes(num_nvl_bytes), num_rdma_bytes(num_rdma_bytes),
@@ -229,6 +232,8 @@ Buffer::get_dispatch_layout(const torch::Tensor& topk_idx, int num_experts,
         EP_HOST_ASSERT(previous_event.has_value() and async);
         at::cuda::setCurrentCUDAStream(comm_stream);
     }
+
+    intranode::nop(comm_stream);
 
     // Wait previous tasks to be finished
     if (previous_event.has_value()) {
@@ -477,6 +482,8 @@ Buffer::intranode_dispatch(const torch::Tensor& x, const std::optional<torch::Te
                         buffer_ptrs_gpu, rank, num_ranks, comm_stream, config.num_sms,
                         config.num_max_nvl_chunked_send_tokens, config.num_max_nvl_chunked_recv_tokens);
 
+    intranode::nop(comm_stream);
+
     // Wait streams
     std::optional<EventHandle> event;
     if (async) {
@@ -496,9 +503,10 @@ Buffer::intranode_dispatch(const torch::Tensor& x, const std::optional<torch::Te
     }
 
     // Switch back compute stream
-    if (allocate_on_comm_stream)
+    if (allocate_on_comm_stream) {
         at::cuda::setCurrentCUDAStream(compute_stream);
-
+    }
+    intranode::nop(comm_stream);
     // Return values
     return {recv_x, recv_x_scales, recv_topk_idx, recv_topk_weights, num_recv_tokens_per_expert_list, rank_prefix_matrix, channel_prefix_matrix, recv_channel_prefix_matrix, recv_src_idx, send_head, event};
 }
@@ -532,6 +540,8 @@ Buffer::intranode_combine(const torch::Tensor& x, const std::optional<torch::Ten
         EP_HOST_ASSERT(previous_event.has_value() and async);
         at::cuda::setCurrentCUDAStream(comm_stream);
     }
+
+    intranode::nop(comm_stream);
 
     // Wait previous tasks to be finished
     if (previous_event.has_value()) {
@@ -703,6 +713,7 @@ Buffer::internode_dispatch(const torch::Tensor& x, const std::optional<torch::Te
         EP_HOST_ASSERT(previous_event.has_value() and async);
         at::cuda::setCurrentCUDAStream(comm_stream);
     }
+    intranode::nop(comm_stream);
 
     // Wait previous tasks to be finished
     if (previous_event.has_value()) {
@@ -1238,5 +1249,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
         .def("clean_low_latency_buffer", &deep_ep::Buffer::clean_low_latency_buffer)
         .def("low_latency_dispatch", &deep_ep::Buffer::low_latency_dispatch)
         .def("low_latency_combine", &deep_ep::Buffer::low_latency_combine)
-        .def("get_next_low_latency_combine_buffer", &deep_ep::Buffer::get_next_low_latency_combine_buffer);
+        .def("get_next_low_latency_combine_buffer", &deep_ep::Buffer::get_next_low_latency_combine_buffer)
+        .def("nop", [](const deep_ep::Buffer& buffer) {
+            deep_ep::intranode::nop(buffer.get_comm_stream());
+        });
 }

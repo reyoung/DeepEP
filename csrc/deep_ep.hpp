@@ -79,6 +79,11 @@ public:
 
     ~Buffer() noexcept(false);
 
+    // Stream for communication
+    at::cuda::CUDAStream get_comm_stream() const {
+        return comm_stream;
+    }
+
     bool is_available() const;
 
     bool is_internode_available() const;

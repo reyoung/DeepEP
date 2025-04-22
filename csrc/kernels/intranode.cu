@@ -161,9 +161,13 @@ cached_notify_dispatch(const int* rank_prefix_matrix, int num_memset_int,
     barrier_device<kNumRanks>(task_fifo_ptrs, head, rank);
 }
 
+inline static __global__ void dummy_cached_notify_dispatch() {}
+
+
 void cached_notify_dispatch(const int* rank_prefix_matrix, int num_memset_int,
                             void** buffer_ptrs, int** task_fifo_ptrs,
                             int head, int rank, int num_ranks, cudaStream_t stream) {
+   dummy_cached_notify_dispatch<<<1, 128, 0, stream>>>();
 #define CACHED_NOTIFY_DISPATCH_LAUNCH_CASE(ranks) \
     LAUNCH_KERNEL(&cfg, cached_notify_dispatch<ranks>, \
         rank_prefix_matrix, num_memset_int, buffer_ptrs, task_fifo_ptrs, head, rank); \
@@ -514,10 +518,21 @@ cached_notify_combine(void** buffer_ptrs, int* send_head, int num_channels, int 
     }
 }
 
+inline static __global__ void dummy_cached_notify_combine() {}
+
+
+__global__ void nop_kern() {}
+
+void nop(cudaStream_t stream) {
+    nop_kern<<<20, 128, 0, stream>>>();
+}
+
+
 void cached_notify_combine(void** buffer_ptrs, int* send_head, int num_channels,
                            int num_recv_tokens, int num_memset_int,
                            int** task_fifo_ptrs, int head, int rank, int num_ranks,
                            cudaStream_t stream) {
+    dummy_cached_notify_combine<<<1 + num_channels, 128, 0, stream>>>();
 #define CACHED_NOTIFY_COMBINE(ranks) \
     LAUNCH_KERNEL(&cfg, cached_notify_combine<ranks>, \
         buffer_ptrs, send_head, num_channels, num_recv_tokens, num_memset_int, task_fifo_ptrs, head, rank); \

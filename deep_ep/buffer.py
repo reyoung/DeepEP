@@ -172,6 +172,9 @@ class Buffer:
         assert num_ranks in config_map, f'Unsupported number of EP ranks: {num_ranks}'
         return config_map[num_ranks]
 
+    def nop(self):
+        self.runtime.nop()
+
     @staticmethod
     def get_combine_config(num_ranks: int) -> Config:
         """
