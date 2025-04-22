@@ -1214,7 +1214,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
 
     pybind11::class_<deep_ep::EventHandle>(m, "EventHandle")
         .def(pybind11::init<>())
-        .def("current_stream_wait", &deep_ep::EventHandle::current_stream_wait);
+        .def("current_stream_wait", &deep_ep::EventHandle::current_stream_wait)
+        .def("id", [](const deep_ep::EventHandle& self) {
+            return reinterpret_cast<uintptr_t>(self.event->eventId());
+        });
 
     pybind11::class_<deep_ep::Buffer>(m, "Buffer")
         .def(pybind11::init<int, int, int64_t, int64_t, bool>())
